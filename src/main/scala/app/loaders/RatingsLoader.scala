@@ -16,5 +16,12 @@ class RatingsLoader(sc : SparkContext, path : String) extends Serializable {
    *
    * @return The RDD for the given ratings
    */
-  def load() : RDD[(Int, Int, Option[Double], Double, Int)] = ???
+  def load() : RDD[(Int, Int, Option[Double], Double, Int)] = {
+    sc.textFile(getClass.getResource(path).getPath)
+      .map(_.split("\\|"))
+      .map(arr => (arr(0).toInt, arr(1).toInt,
+        if (arr.length == 4) None else Some(arr(2).toDouble),
+        arr(arr.length - 2).toDouble,
+        arr(arr.length - 1).toInt))
+  }
 }

@@ -17,7 +17,7 @@ class MoviesLoader(sc: SparkContext, path: String) extends Serializable {
    * @return The RDD for the given titles
    */
   def load(): RDD[(Int, String, List[String])] = {
-    val reg = """^(\d+)\|"(.+)"\|"(.+)"""".r
+    val reg = """^(\d+)\|"(.+)"\|"(.+)"$""".r
     sc.textFile(getClass.getResource(path).getPath)
       .map { line =>
         val matchh = reg.findFirstMatchIn(line).get

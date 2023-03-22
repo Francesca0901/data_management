@@ -11,15 +11,31 @@ class SimpleAnalytics() extends Serializable {
 
   private var ratingsPartitioner: HashPartitioner = null
   private var moviesPartitioner: HashPartitioner = null
+  private var usedRatings: RDD[(Int, Int, Option[Double], Double, Int)] = null
+  private var usedMovies: RDD[(Int, String, List[String])] = null
 
   def init(
             ratings: RDD[(Int, Int, Option[Double], Double, Int)],
             movie: RDD[(Int, String, List[String])]
-          ): Unit = ???
+          ): Unit = {
+    ratingsPartitioner = new HashPartitioner(ratings.getNumPartitions)
+    moviesPartitioner = new HashPartitioner(movie.getNumPartitions)
+    usedRatings = ratings
+    usedMovies = movie
+  }
+  def getNumberOfMoviesRatedEachYear: RDD[(Int, Int)] = {
+    val moviesByYear = usedRatings.map { rating =>
+      val dateTime = new DateTime(rating._5 * 1000L)
+      val year = dateTime.getYear
+      (year, rating._2)
+    }
+    val numMoviesByYear = moviesByYear.distinct.groupBy(_._1).mapValues(_.size)
+    numMoviesByYear
+  }
 
-  def getNumberOfMoviesRatedEachYear: RDD[(Int, Int)] = ???
-
-  def getMostRatedMovieEachYear: RDD[(Int, String)] = ???
+  def getMostRatedMovieEachYear: RDD[(Int, String)] = {
+    ???
+  }
 
   def getMostRatedGenreEachYear: RDD[(Int, List[String])] = ???
 
@@ -34,7 +50,10 @@ class SimpleAnalytics() extends Serializable {
    * @return The RDD for the movies which are in the supplied genres
    */
   def getAllMoviesByGenre(movies: RDD[(Int, String, List[String])],
-                          requiredGenres: RDD[String]): RDD[String] = ???
+                          requiredGenres: RDD[String]): RDD[String] = {
+    //val requiredGenresSet = ???
+    ???
+  }
 
   /**
    * Filter the movies RDD having the required genres

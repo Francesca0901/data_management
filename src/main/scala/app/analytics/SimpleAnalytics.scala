@@ -3,8 +3,11 @@ package app.analytics
 import org.apache.spark.HashPartitioner
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.RDD.rddToPairRDDFunctions
 import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
 import org.joda.time.DateTime
+
+import scala.math.Ordered.orderingToOrdered
 
 
 class SimpleAnalytics() extends Serializable {
@@ -13,16 +16,33 @@ class SimpleAnalytics() extends Serializable {
   private var moviesPartitioner: HashPartitioner = null
   private var usedRatings: RDD[(Int, Int, Option[Double], Double, Int)] = null
   private var usedMovies: RDD[(Int, String, List[String])] = null
-
+  private var titlesGroupedById: RDD[(Int, String)] = null
+  private var ratingsGroupedByYearByTitle: RDD[((Int, Int), Int)] = null
   def init(
             ratings: RDD[(Int, Int, Option[Double], Double, Int)],
             movie: RDD[(Int, String, List[String])]
           ): Unit = {
     ratingsPartitioner = new HashPartitioner(ratings.getNumPartitions)
     moviesPartitioner = new HashPartitioner(movie.getNumPartitions)
+
     usedRatings = ratings
     usedMovies = movie
+
+    val moviesByYear = ratings.map { rating =>
+      val dateTime = new DateTime(rating._5 * 1000L)
+      val year = dateTime.getYear
+      ((year, rating._2), 1)
+    }
+
+    ratingsGroupedByYearByTitle = moviesByYear
+      .reduceByKey(ratingsPartitioner, _ + _)
+      .persist()
+
+    titlesGroupedById = movie.map { case (movieId, name, _) => (movieId, name) }
+      .partitionBy(ratingsPartitioner)
+      .persist()
   }
+
   def getNumberOfMoviesRatedEachYear: RDD[(Int, Int)] = {
     val moviesByYear = usedRatings.map { rating =>
       val dateTime = new DateTime(rating._5 * 1000L)
@@ -34,10 +54,23 @@ class SimpleAnalytics() extends Serializable {
   }
 
   def getMostRatedMovieEachYear: RDD[(Int, String)] = {
-    ???
+    val mostRatedMovieByYear = ratingsGroupedByYearByTitle.map { case ((year, movieId), count) => (year, (movieId, count)) }
+      .groupByKey()
+      .mapValues { movies =>
+        movies.toList.sortWith { case ((movieId1, count1), (movieId2, count2)) =>
+          if (count1 == count2) movieId1 > movieId2
+          else count1 > count2
+        }.head
+      }
+      .map { case (year, (movieId, _)) => (movieId, year) }
+
+    val result = mostRatedMovieByYear.join(titlesGroupedById).map { case (movieId, (year, movieName)) => (year, movieName) }
+    result
   }
 
-  def getMostRatedGenreEachYear: RDD[(Int, List[String])] = ???
+  def getMostRatedGenreEachYear: RDD[(Int, List[String])] = {
+    ???
+  }
 
   // Note: if two genre has the same number of rating, return the first one based on lexicographical sorting on genre.
   def getMostAndLeastRatedGenreAllTime: ((String, Int), (String, Int)) = ???

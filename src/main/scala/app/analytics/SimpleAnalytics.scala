@@ -99,14 +99,17 @@ class SimpleAnalytics() extends Serializable {
   /**
    * Filter the movies RDD having the required genres
    *
-   * @param movies         RDD of movies dataset
+   * @param movies         RDD of movies dataset, (movieId, movieName, movieGenres)
    * @param requiredGenres RDD of genres to filter movies
    * @return The RDD for the movies which are in the supplied genres
    */
   def getAllMoviesByGenre(movies: RDD[(Int, String, List[String])],
                           requiredGenres: RDD[String]): RDD[String] = {
-    //val requiredGenresSet = ???
-    ???
+    val requiredGenresList = requiredGenres.collect.toList
+    val requiredGenresSet = movies.filter{ case (_, _, genres) =>
+      genres.intersect(requiredGenresList).nonEmpty
+    }.map(_._2)
+    requiredGenresSet
   }
 
   /**
@@ -121,7 +124,15 @@ class SimpleAnalytics() extends Serializable {
    */
   def getAllMoviesByGenre_usingBroadcast(movies: RDD[(Int, String, List[String])],
                                          requiredGenres: List[String],
-                                         broadcastCallback: List[String] => Broadcast[List[String]]): RDD[String] = ???
+                                         broadcastCallback: List[String] => Broadcast[List[String]]): RDD[String] = {
+    // broadcast the requiredGenres list
+    val requiredGenresBroadcast = broadcastCallback(requiredGenres)
+    val requiredGenresSet = movies.filter { case (_, _, genres) =>
+      genres.intersect(requiredGenresBroadcast.value).nonEmpty
+    }.map(_._2)
+
+    requiredGenresSet
+  }
 
 }
 

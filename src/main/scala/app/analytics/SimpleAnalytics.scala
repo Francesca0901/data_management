@@ -11,8 +11,8 @@ import scala.math.Ordered.orderingToOrdered
 
 
 class SimpleAnalytics() extends Serializable {
-  private var usedRatings: RDD[(Int, Int, Option[Double], Double, Int)] = null
-  private var usedMovies: RDD[(Int, String, List[String])] = null
+  private var ratings: RDD[(Int, Int, Option[Double], Double, Int)] = null
+  private var movies: RDD[(Int, String, List[String])] = null
 
   private var ratingsPartitioner: HashPartitioner = null
   private var moviesPartitioner: HashPartitioner = null
@@ -26,8 +26,8 @@ class SimpleAnalytics() extends Serializable {
     ratingsPartitioner = new HashPartitioner(ratings.getNumPartitions)
     moviesPartitioner = new HashPartitioner(movie.getNumPartitions)
 
-    usedRatings = ratings
-    usedMovies = movie
+    this.ratings = ratings
+    this.movies = movie
 
     val moviesByYear = ratings.map { rating =>
       val dateTime = new DateTime(rating._5 * 1000L)
@@ -45,7 +45,7 @@ class SimpleAnalytics() extends Serializable {
   }
 
   def getNumberOfMoviesRatedEachYear: RDD[(Int, Int)] = {
-    val moviesEachYear = usedRatings.map { rating =>
+    val moviesEachYear = ratings.map { rating =>
       val dateTime = new DateTime(rating._5 * 1000L)
       val year = dateTime.getYear
       (year, rating._2)
@@ -80,8 +80,8 @@ class SimpleAnalytics() extends Serializable {
       }
       .map { case (year, (movieId, _)) => (movieId, year) }
 
-    // Join the mostRatedMovieByYear RDD with usedMovies RDD to get the movie name and genres
-    val result = mostRatedMovieEachYear.join(usedMovies.map { case (movieId, name, genres) => (movieId, genres) }).map {
+    // Join the mostRatedMovieByYear RDD with movies RDD to get the movie name and genres
+    val result = mostRatedMovieEachYear.join(movies.map { case (movieId, name, genres) => (movieId, genres) }).map {
       case (movieId, (year, genres)) => (year, genres)
     }
     result

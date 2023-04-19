@@ -1,19 +1,22 @@
 package app.recommender.LSH
 
-
 import org.apache.spark.HashPartitioner
 import org.apache.spark.rdd.RDD
 import scala.reflect.ClassTag
-
+import org.apache.spark.sql.catalyst.plans.physical.SinglePartition.numPartitions
+import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
 /**
  * Class for indexing the data for LSH
  *
- * @param data The title data to index
+ * @param data The title data to index (movieId, movieName, genres)
  * @param seed The seed to use for hashing keyword lists
  */
 class LSHIndex(data: RDD[(Int, String, List[String])], seed : IndexedSeq[Int]) extends Serializable {
 
   private val minhash = new MinHash(seed)
+  private val partitioner = new HashPartitioner(numPartitions)
+  private var titleWithSignature: RDD[(IndexedSeq[Int], List[(Int, String, List[String])])] = null
+  getBuckets()
 
   /**
    * Hash function for an RDD of queries.
@@ -30,7 +33,12 @@ class LSHIndex(data: RDD[(Int, String, List[String])], seed : IndexedSeq[Int]) e
    *
    * @return Data structure of LSH index
    */
-  def getBuckets(): RDD[(IndexedSeq[Int], List[(Int, String, List[String])])] = ???
+  def getBuckets(): RDD[(IndexedSeq[Int], List[(Int, String, List[String])])] = {
+    titleWithSignature = data.map {
+      case (movieId, movieName, genres) => (minhash.hash(genres), (movieId, movieName, genres))
+    }.groupByKey(partitioner).mapValues(_.toList)
+    titleWithSignature.persist(MEMORY_AND_DISK)
+  }
 
   /**
    * Lookup operation on the LSH index
@@ -41,5 +49,12 @@ class LSHIndex(data: RDD[(Int, String, List[String])], seed : IndexedSeq[Int]) e
    *         If no match exists in the LSH index, return an empty result list.
    */
   def lookup[T: ClassTag](queries: RDD[(IndexedSeq[Int], T)])
-  : RDD[(IndexedSeq[Int], T, List[(Int, String, List[String])])] = ???
+  : RDD[(IndexedSeq[Int], T, List[(Int, String, List[String])])] = {
+    queries.join(titleWithSignature).map{ case (signature, (keywordList, matchedMovies)) => (signature, keywordList, matchedMovies)}
+//    queries.flatMap { case (signature, keywordList) =>
+//      titleWithSignature.lookup(signature).map{
+//        matchedMovies => (signature, keywordList, matchedMovies)
+//      }
+//    }
+  }
 }

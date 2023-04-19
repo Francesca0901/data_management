@@ -12,9 +12,13 @@ class NNLookup(lshIndex: LSHIndex) extends Serializable {
   /**
    * Lookup operation for queries
    *
-   * @param input The RDD of keyword lists
+   * @param queries The RDD of keyword lists
    * @return The RDD of (keyword list, resut) pairs
    */
   def lookup(queries: RDD[List[String]])
-  : RDD[(List[String], List[(Int, String, List[String])])] = ???
+  : RDD[(List[String], List[(Int, String, List[String])])] = {
+    val queryWithSignature = lshIndex.hash(queries)
+    val foundMovies = lshIndex.lookup(queryWithSignature).map{ case (signature, keywordList, matchedMovies) => (keywordList, matchedMovies)}
+    foundMovies
+  }
 }

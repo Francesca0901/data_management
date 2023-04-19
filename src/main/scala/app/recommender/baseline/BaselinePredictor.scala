@@ -1,7 +1,5 @@
 package app.recommender.baseline
 
-import org.apache.spark.HashPartitioner
-import org.apache.spark.sql.catalyst.plans.physical.SinglePartition.numPartitions
 import org.apache.spark.rdd.RDD
 
 class BaselinePredictor() extends Serializable {
@@ -14,7 +12,6 @@ class BaselinePredictor() extends Serializable {
 
 //  private var partitioner: HashPartitioner = null
   def init(ratingsRDD: RDD[(Int, Int, Option[Double], Double, Int)]): Unit = {
-//    partitioner = new HashPartitioner(numPartitions)
 
     //the average rating by user over all movies
     averRatingPerUser = ratingsRDD.map{
@@ -51,7 +48,7 @@ class BaselinePredictor() extends Serializable {
       .mapValues(x => x._1 / x._2) // (movieId, averageRating)
   }
 
-  def predict(userId: Int, movieId: Int): Double = {
+  def predict(userId: Int, movieId: Int): Double = {         // need optimization
     val userAverageRating = {
       val rating = averRatingPerUser.lookup(userId)
       if (rating.isEmpty) 0.0 else rating.head
@@ -59,10 +56,10 @@ class BaselinePredictor() extends Serializable {
 //    val globalAverageRatingOnMovie = globalAverageRatings.lookup(movieId).head
     val globalAverageRatingOnMovie = {
       val globalRatings = globalAverageRatings.lookup(movieId)
-      if (globalRatings.isEmpty) 0.0 else globalRatings.head
+      if (globalRatings.isEmpty) -2.0 else globalRatings.head
     }
 
-    if (globalAverageRatingOnMovie == 0.0) {
+    if (globalAverageRatingOnMovie == -2.0) {
       return userAverageRating
     }
 
@@ -70,11 +67,13 @@ class BaselinePredictor() extends Serializable {
       return globalAverage
     }
 
-    val scale = if (globalAverageRatingOnMovie > 0) {
-      5 - userAverageRating
-    } else if (globalAverageRatingOnMovie < 0) {
-      userAverageRating - 1
-    } else 1
+    val scale = {
+      if (globalAverageRatingOnMovie > 0) {
+        5 - userAverageRating
+      } else if (globalAverageRatingOnMovie < 0) {
+        userAverageRating - 1
+      } else 1
+    }
 
     userAverageRating + globalAverageRatingOnMovie * scale
   }

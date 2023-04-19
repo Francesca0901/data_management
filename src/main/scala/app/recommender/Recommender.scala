@@ -36,12 +36,12 @@ class Recommender(sc: SparkContext,
     }
 
     // exclude seen movies
-    val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId))
+    val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId)).collect().toList
 
     val predictMovieRating = filteredMovie.map{ case (movieId) =>
       val rating = baselinePredictor.predict(userId, movieId)
       (movieId, rating)
-    }.sortBy(-_._2).take(K).toList
+    }.sortBy(-_._2).take(K)
 
     predictMovieRating
   }
@@ -61,12 +61,12 @@ class Recommender(sc: SparkContext,
     }
 
     // exclude seen movies
-    val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId))
+    val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId)).collect().toList
 
     val predictMovieRating = filteredMovie.map { case (movieId) =>
       val rating = collaborativePredictor.predict(userId, movieId)
       (movieId, rating)
-    }.sortBy(-_._2).take(K).toList
+    }.sortBy(-_._2).take(K)
 
     predictMovieRating
   }

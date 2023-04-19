@@ -20,9 +20,6 @@ class Recommender(sc: SparkContext,
   private val baselinePredictor = new BaselinePredictor()
   baselinePredictor.init(ratings)
 
-  private val bcCollaborativePredictor = sc.broadcast(collaborativePredictor)
-  private val bcBaselinePredictor = sc.broadcast(baselinePredictor)
-
   /**
    * Returns the top K recommendations for movies similar to the List of genres
    * for userID using the BaseLinePredictor
@@ -31,8 +28,8 @@ class Recommender(sc: SparkContext,
     // already watched movie list
     val watchedMovie = ratings.map{ case (user_id, movie_id, _, _, _) => (user_id, movie_id) }.lookup(userId)
 
-    val genreRDD = sc.parallelize(genre)
-    val lookedUpMovie = nn_lookup.lookup(genreRDD.map(_.split(" ").toList)).flatMap {
+    val genreRDD = sc.parallelize(List(genre))
+    val lookedUpMovie = nn_lookup.lookup(genreRDD).flatMap {
       case (genres, movieRDD) => movieRDD
     }.map{
       case (movieId, movieName, genres) => movieId
@@ -42,7 +39,7 @@ class Recommender(sc: SparkContext,
     val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId))
 
     val predictMovieRating = filteredMovie.map{ case (movieId) =>
-      val rating = bcBaselinePredictor.value.predict(userId, movieId)
+      val rating = baselinePredictor.predict(userId, movieId)
       (movieId, rating)
     }.sortBy(-_._2).take(K).toList
 
@@ -53,6 +50,24 @@ class Recommender(sc: SparkContext,
    * The same as recommendBaseline, but using the CollaborativeFiltering predictor
    */
   def recommendCollaborative(userId: Int, genre: List[String], K: Int): List[(Int, Double)] = {
-    ???
+    // already watched movie list
+    val watchedMovie = ratings.map { case (user_id, movie_id, _, _, _) => (user_id, movie_id) }.lookup(userId)
+
+    val genreRDD = sc.parallelize(List(genre))
+    val lookedUpMovie = nn_lookup.lookup(genreRDD).flatMap {
+      case (genres, movieRDD) => movieRDD
+    }.map {
+      case (movieId, movieName, genres) => movieId
+    }
+
+    // exclude seen movies
+    val filteredMovie = lookedUpMovie.filter(movieId => !watchedMovie.contains(movieId))
+
+    val predictMovieRating = filteredMovie.map { case (movieId) =>
+      val rating = collaborativePredictor.predict(userId, movieId)
+      (movieId, rating)
+    }.sortBy(-_._2).take(K).toList
+
+    predictMovieRating
   }
 }

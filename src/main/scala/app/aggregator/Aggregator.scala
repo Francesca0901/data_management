@@ -12,10 +12,8 @@ import org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
  */
 class Aggregator(sc: SparkContext) extends Serializable {
 
-  private var state = null
+  private var state: RDD[(Int, (String, Int, Double, List[String]))] = null
   private var partitioner: HashPartitioner = null
-  private var ratings: RDD[(Int, Int, Option[Double], Double, Int)] = null
-  private var title: RDD[(Int, String, List[String])] = null
 //  private var averageRatingWithGenres: RDD[(String, Double, List[String])] = null
   var averageRating: RDD[(String, Double)] = null
 
@@ -31,12 +29,25 @@ class Aggregator(sc: SparkContext) extends Serializable {
             ratings: RDD[(Int, Int, Option[Double], Double, Int)],
             title: RDD[(Int, String, List[String])]
           ): Unit = {
-    partitioner = new HashPartitioner(numPartitions)
-    this.ratings = ratings
-    this.title = title
+    partitioner = new HashPartitioner(ratings.getNumPartitions)
+
+    val ratingsByTitleId: RDD[(Int, Iterable[(Int, Int, Double)])] = ratings.map { case (user_id, title_id, old_rating, rating, timestamp) => (title_id, (user_id, title_id, rating)) }
+      .groupByKey(partitioner) // (title_id, (user_id, title_id, rating)) }
+
+    val averageRatingByTitleId: RDD[(Int, (Double, Int))] = ratingsByTitleId.mapValues { ratings =>
+      val sum = ratings.map(_._3).sum
+      val count = ratings.size
+      (sum / count, count)
+    }
+
+    state = title.map { case (movieId, title, genres) => (movieId, (title, genres)) }
+      .leftOuterJoin(averageRatingByTitleId).map {
+      case (movieId, (title, Some((avgRating, count)))) => (movieId, (title._1, count, avgRating, title._2))
+      case (movieId, (title, None)) => (movieId, (title._1, 0, 0.0, title._2))
+    }.persist(MEMORY_AND_DISK)
 
 //    val titleWithId: RDD[(String, List[String])] = title.map { case (movieId, title, genres) => (title, genres) }
-    averageRating = getResult().persist(MEMORY_AND_DISK)
+//    averageRating = getResult().persist(MEMORY_AND_DISK)
 
   }
 
@@ -45,21 +56,7 @@ class Aggregator(sc: SparkContext) extends Serializable {
    *
    * @return The pairs of titleids and ratings
    */
-  def getResult(): RDD[(String, Double)] = {
-    val ratingsByTitleId: RDD[(Int, Iterable[(Int, Int, Double)])] = ratings.map { case (user_id, title_id, old_rating, rating, timestamp) => (title_id, (user_id, title_id, rating)) }
-      .groupByKey(partitioner) // (title_id, (user_id, title_id, rating)) }
-    val averageRatingByTitleId: RDD[(Int, Double)] = ratingsByTitleId.mapValues { ratings =>
-      val sum = ratings.map(_._3).sum
-      val count = ratings.size
-      sum / count
-    }
-    val averageRatingWithTitle: RDD[(String, Double)] = title.map { case (movieId, title, genres) => (movieId, title) }
-      .leftOuterJoin(averageRatingByTitleId).map {
-      case (movieId, (title, Some(rating))) => (title, rating)
-      case (movieId, (title, None)) => (title, 0.0)
-    }
-    averageRatingWithTitle
-  }
+  def getResult(): RDD[(String, Double)] = state.map { case (_, (title, _, ratingAvg, _)) => (title, ratingAvg) }
 
   /**
    * Compute the average rating across all (rated titles) that contain the
@@ -71,12 +68,22 @@ class Aggregator(sc: SparkContext) extends Serializable {
    *         such titles are rated and -1.0 if no such titles exist.
    */
   def getKeywordQueryResult(keywords: List[String]): Double = {
-    val titleWithId: RDD[(String, List[String])] = title.map { case (movieId, title, genres) => (title, genres) }
-    val averageRatingWithGenres = averageRating.join(titleWithId).map { case (title, (rating, genres)) => (title, rating, genres) }
+//    val titleWithId: RDD[(String, List[String])] = title.map { case (movieId, title, genres) => (title, genres) }
+//    val averageRatingWithGenres = averageRating.join(titleWithId).map { case (title, (rating, genres)) => (title, rating, genres) }
+//
+//    val filteredRatings = averageRatingWithGenres.filter { case (_, _, genres) =>
+//      keywords.forall(keyword => genres.contains(keyword))
+//    }.map { case (titles, ratings, genres) => ratings }
+//
+//    val keywordQueryResult = {
+//      if (filteredRatings.count() == 0) -1.0
+//      else filteredRatings.reduce(_ + _) / filteredRatings.count()
+//    }
+//    keywordQueryResult
 
-    val filteredRatings = averageRatingWithGenres.filter { case (_, _, genres) =>
+    val filteredRatings = state.filter { case (_, (title, _, _, genres)) =>
       keywords.forall(keyword => genres.contains(keyword))
-    }.map { case (titles, ratings, genres) => ratings }
+    }.map { case (_, (_, _, ratings, _)) => ratings }
 
     val keywordQueryResult = {
       if (filteredRatings.count() == 0) -1.0
@@ -92,15 +99,25 @@ class Aggregator(sc: SparkContext) extends Serializable {
    *        format: (user_id: Int, title_id: Int, old_rating: Option[Double], rating: Double, timestamp: Int)
    */
   def updateResult(delta_ : Array[(Int, Int, Option[Double], Double, Int)]): Unit = {
-    val deltaRating = sc.parallelize(delta_)
+    val deltaRDD = sc.parallelize(delta_)
 
-    val deltaWithUserTitleRating = delta_.map { case (user_id, title_id, _, _, _) => (user_id, title_id) }.toSet
-    // delete the old records
-    val filteredRatings = ratings.filter { case (user_id, title_id, _, _, _) => !deltaWithUserTitleRating.contains((user_id, title_id)) }
+    // !!calculate the difference between the new and old ratings, and calculate the count accordingly
+    val deltaRating: RDD[(Int, (Double, Int))] = deltaRDD.map {
+      case (userId, titleId, Some(oldRating), newRating, _) => (titleId, (newRating - oldRating, 0)) // get the difference, count doesn't change
+      case (userId, titleId, None, newRating, _) => (titleId, (newRating, 1)) // new rating, count increases
+    }.reduceByKey((x, y) => (x._1 + y._1, x._2 + y._2))
 
-    ratings = filteredRatings.union(deltaRating)
-    val newAverageRating = getResult()
-    averageRating.unpersist()
-    averageRating = newAverageRating.persist(MEMORY_AND_DISK)
+    val updatedState = state.leftOuterJoin(deltaRating)
+      .map {
+        case (titleId, ((title, count, avgRating, genres), Some((deltaRating, deltaCount)))) =>
+          val newCount = count + deltaCount
+          val newAvgRating = if (newCount == 0) 0.0 else (avgRating * count + deltaRating) / newCount
+          (titleId, (title, newCount, newAvgRating, genres))
+        case (titleId, ((title, count, avgRating, genres), None)) =>
+          (titleId, (title, count, avgRating, genres))
+      }
+
+    state.unpersist()
+    state = updatedState.persist(MEMORY_AND_DISK)
   }
 }

@@ -103,8 +103,8 @@ class Aggregator(sc: SparkContext) extends Serializable {
 
     // !!calculate the difference between the new and old ratings, and calculate the count accordingly
     val deltaRating: RDD[(Int, (Double, Int))] = deltaRDD.map {
-      case (userId, titleId, Some(oldRating), newRating, _) => (titleId, (newRating - oldRating, 0)) // get the difference, count doesn't change
-      case (userId, titleId, None, newRating, _) => (titleId, (newRating, 1)) // new rating, count increases
+      case (_, titleId, Some(oldRating), newRating, _) => (titleId, (newRating - oldRating, 0)) // get the difference, count doesn't change
+      case (_, titleId, None, newRating, _) => (titleId, (newRating, 1)) // new rating, count increases
     }.reduceByKey((x, y) => (x._1 + y._1, x._2 + y._2))
 
     val updatedState = state.leftOuterJoin(deltaRating)

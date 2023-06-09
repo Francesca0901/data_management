@@ -1,6 +1,6 @@
 # movie_recommander
 This is the individual project from EPFL's system for data management course.
-[a more detailed project discription](chrome-extension://hmigninkgibhdckiaphhmbgcghochdjc/pdfjs/web/viewer.html?file=https%3A%2F%2Fmoodle.epfl.ch%2Fpluginfile.php%2F3171624%2Fmod_resource%2Fcontent%2F4%2FCS460_2023_project-5.pdf)
+a more detailed project discription can be found at: chrome-extension://hmigninkgibhdckiaphhmbgcghochdjc/pdfjs/web/viewer.html?file=https%3A%2F%2Fmoodle.epfl.ch%2Fpluginfile.php%2F3171624%2Fmod_resource%2Fcontent%2F4%2FCS460_2023_project-5.pdf)
 
 In this project, we are expected to implement data processing pipelines overApache Spark.
 We are given a dataset based on the MovieLens datasets. 

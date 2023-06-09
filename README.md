@@ -11,4 +11,4 @@ A video streaming application requires large-scale data processing over the give
 Specifically, for each title, it displays: 
 - All the movies that are "similar" in terms of keywords
 - An average rating 
-In the background, the application issues Spark jobs that pre-compute the information that is served. My task is to write Spark code for the required functionality.
+In the background, the application issues Spark jobs that pre-compute the information that is served. OUr task is to write Spark code for the required functionality.
